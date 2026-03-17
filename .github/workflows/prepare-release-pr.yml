@@ -36,7 +36,7 @@ jobs:
           python - <<'PY' "$ver"
           import re
           import sys
-          
+
           ver = sys.argv[1]
           if not re.fullmatch(r"\d+\.\d+\.\d+", ver):
               raise SystemExit(f"Invalid semver: {ver}")
@@ -50,7 +50,7 @@ jobs:
           from pathlib import Path
           import re
           import sys
-          
+
           ver = sys.argv[1]
           path = Path("pyproject.toml")
           text = path.read_text(encoding="utf-8")
@@ -73,19 +73,6 @@ jobs:
       - name: Run tests
         run: |
           make test
-
-      - name: Commit bump to release branch
-        run: |
-          ver="${{ inputs.version }}"
-          branch="release/v${ver}"
-
-          git config user.name  "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          git checkout -b "$branch"
-          git add pyproject.toml
-          git commit -m "chore(release): v${ver}"
-          git push origin "$branch"
 
       - name: Open Pull Request with PAT
         if: ${{ env.WORKFLOW_PR_TOKEN != '' }}
