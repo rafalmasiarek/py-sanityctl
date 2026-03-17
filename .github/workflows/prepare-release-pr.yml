@@ -1,10 +1,10 @@
-name: Prepare Release PR
+name: Bump Python Version
 
 on:
   workflow_dispatch:
     inputs:
-      version:
-        description: "Semver without leading v, e.g. 0.1.0"
+      python_version:
+        description: "Python version to set in .python-version, e.g. 3.12"
         required: true
         type: string
 
@@ -13,8 +13,10 @@ permissions:
   pull-requests: write
 
 jobs:
-  prepare-pr:
+  bump-python:
     runs-on: ubuntu-24.04
+    env:
+      PYTHON_BUMP_PR_TOKEN: ${{ secrets.PYTHON_BUMP_PR_TOKEN }}
 
     steps:
       - name: Checkout main
@@ -23,104 +25,50 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version-file: ".python-version"
-
       - name: Validate version format
         run: |
-          ver="${{ inputs.version }}"
-          python - <<'PY' "$ver"
+          ver="${{ inputs.python_version }}"
+          python3 - <<'PY' "$ver"
           import re
           import sys
           
           ver = sys.argv[1]
-          if not re.fullmatch(r"\d+\.\d+\.\d+", ver):
-              raise SystemExit(f"Invalid semver: {ver}")
-          print(f"Version OK: {ver}")
+          if not re.fullmatch(r"\d+\.\d+(\.\d+)?", ver):
+              raise SystemExit(f"Invalid Python version: {ver}")
+          print(f"Python version OK: {ver}")
           PY
 
-      - name: Bump version in pyproject.toml
+      - name: Update .python-version
         run: |
-          ver="${{ inputs.version }}"
-          python - <<'PY' "$ver"
-          from pathlib import Path
-          import re
-          import sys
-          
-          ver = sys.argv[1]
-          path = Path("pyproject.toml")
-          text = path.read_text(encoding="utf-8")
-          new_text, count = re.subn(
-              r'(?m)^version = "[^"]+"$',
-              f'version = "{ver}"',
-              text,
-              count=1,
-          )
-          if count != 1:
-              raise SystemExit("Failed to update version in pyproject.toml")
-          path.write_text(new_text, encoding="utf-8")
-          print(f"Updated pyproject.toml to version {ver}")
-          PY
+          printf '%s\n' "${{ inputs.python_version }}" > .python-version
 
-      - name: Install project
-        run: |
-          make install
-
-      - name: Run tests
-        run: |
-          make test
-
-      - name: Commit bump to release branch
-        run: |
-          ver="${{ inputs.version }}"
-          branch="release/v${ver}"
-
-          git config user.name  "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          git checkout -b "$branch"
-          git add pyproject.toml
-          git commit -m "chore(release): v${ver}"
-          git push origin "$branch"
-
-      - name: Open Pull Request with PAT
-        if: ${{ secrets.PYTHON_BUMP_PR_TOKEN != '' }}
+      - name: Create Pull Request with PAT
+        if: ${{ env.PYTHON_BUMP_PR_TOKEN != '' }}
         uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ secrets.PYTHON_BUMP_PR_TOKEN }}
-          branch: release/v${{ inputs.version }}
+          commit-message: "chore(python): bump to ${{ inputs.python_version }}"
+          branch: "chore/python-${{ inputs.python_version }}"
           base: main
-          title: "chore(release): v${{ inputs.version }}"
+          title: "chore(python): bump to ${{ inputs.python_version }}"
           body: |
-            This PR prepares release **v${{ inputs.version }}**:
-            - bumps version in `pyproject.toml`
-            - verifies local install
-            - runs tests
-
-            After merge, the release workflow will:
-            - create tag `v${{ inputs.version }}`
-            - build `sanityctl-linux-amd64`
-            - build `sanityctl-linux-arm64`
-            - publish semver release assets
-            - update rolling prerelease `latest`
+            This PR updates `.python-version` to `${{ inputs.python_version }}`.
           labels: |
-            release
+            dependencies
+            python
           draft: false
 
-      - name: Open Pull Request with default GITHUB_TOKEN
-        if: ${{ secrets.PYTHON_BUMP_PR_TOKEN == '' }}
+      - name: Create Pull Request with default GITHUB_TOKEN
+        if: ${{ env.PYTHON_BUMP_PR_TOKEN == '' }}
         uses: peter-evans/create-pull-request@v8
         with:
-          branch: release/v${{ inputs.version }}
+          commit-message: "chore(python): bump to ${{ inputs.python_version }}"
+          branch: "chore/python-${{ inputs.python_version }}"
           base: main
-          title: "chore(release): v${{ inputs.version }}"
+          title: "chore(python): bump to ${{ inputs.python_version }}"
           body: |
-            This PR prepares release **v${{ inputs.version }}**:
-            - bumps version in `pyproject.toml`
-            - verifies local install
-            - runs tests
+            This PR updates `.python-version` to `${{ inputs.python_version }}`.
           labels: |
-            release
+            dependencies
+            python
           draft: false
