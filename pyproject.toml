@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sanityctl"
+version = "0.1.0"
+description = "Simple CLI for smoke tests and sanity checks in CI/CD pipelines."
+requires-python = ">=3.10"
+dependencies = [
+  "PyYAML>=6.0",
+  "rich-argparse>=1.7.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+]
+build = [
+  "pyinstaller>=6.0",
+]
+
+[project.scripts]
+sanityctl = "sanityctl.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

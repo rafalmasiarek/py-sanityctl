@@ -1,0 +1,72 @@
+name: Bump Python Version
+
+on:
+  workflow_dispatch:
+    inputs:
+      python_version:
+        description: "Python version to set in .python-version, e.g. 3.12"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  bump-python:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Validate version format
+        run: |
+          ver="${{ inputs.python_version }}"
+          python3 - <<'PY' "$ver"
+import re
+import sys
+
+ver = sys.argv[1]
+if not re.fullmatch(r"\d+\.\d+(\.\d+)?", ver):
+    raise SystemExit(f"Invalid Python version: {ver}")
+print(f"Python version OK: {ver}")
+PY
+
+      - name: Update .python-version
+        run: |
+          printf '%s\n' "${{ inputs.python_version }}" > .python-version
+
+      - name: Create Pull Request with PAT
+        if: ${{ secrets.PYTHON_BUMP_PR_TOKEN != '' }}
+        uses: peter-evans/create-pull-request@v8
+        with:
+          token: ${{ secrets.PYTHON_BUMP_PR_TOKEN }}
+          commit-message: "chore(python): bump to ${{ inputs.python_version }}"
+          branch: "chore/python-${{ inputs.python_version }}"
+          base: main
+          title: "chore(python): bump to ${{ inputs.python_version }}"
+          body: |
+            This PR updates `.python-version` to `${{ inputs.python_version }}`.
+          labels: |
+            dependencies
+            python
+          draft: false
+
+      - name: Create Pull Request with default GITHUB_TOKEN
+        if: ${{ secrets.PYTHON_BUMP_PR_TOKEN == '' }}
+        uses: peter-evans/create-pull-request@v8
+        with:
+          commit-message: "chore(python): bump to ${{ inputs.python_version }}"
+          branch: "chore/python-${{ inputs.python_version }}"
+          base: main
+          title: "chore(python): bump to ${{ inputs.python_version }}"
+          body: |
+            This PR updates `.python-version` to `${{ inputs.python_version }}`.
+          labels: |
+            dependencies
+            python
+          draft: false

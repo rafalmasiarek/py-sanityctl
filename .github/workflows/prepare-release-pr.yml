@@ -1,0 +1,126 @@
+name: Prepare Release PR
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Semver without leading v, e.g. 0.1.0"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  prepare-pr:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: ".python-version"
+
+      - name: Validate version format
+        run: |
+          ver="${{ inputs.version }}"
+          python - <<'PY' "$ver"
+import re
+import sys
+
+ver = sys.argv[1]
+if not re.fullmatch(r"\d+\.\d+\.\d+", ver):
+    raise SystemExit(f"Invalid semver: {ver}")
+print(f"Version OK: {ver}")
+PY
+
+      - name: Bump version in pyproject.toml
+        run: |
+          ver="${{ inputs.version }}"
+          python - <<'PY' "$ver"
+from pathlib import Path
+import re
+import sys
+
+ver = sys.argv[1]
+path = Path("pyproject.toml")
+text = path.read_text(encoding="utf-8")
+new_text, count = re.subn(
+    r'(?m)^version = "[^"]+"$',
+    f'version = "{ver}"',
+    text,
+    count=1,
+)
+if count != 1:
+    raise SystemExit("Failed to update version in pyproject.toml")
+path.write_text(new_text, encoding="utf-8")
+print(f"Updated pyproject.toml to version {ver}")
+PY
+
+      - name: Install project
+        run: |
+          make install
+
+      - name: Run tests
+        run: |
+          make test
+
+      - name: Commit bump to release branch
+        run: |
+          ver="${{ inputs.version }}"
+          branch="release/v${ver}"
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git checkout -b "$branch"
+          git add pyproject.toml
+          git commit -m "chore(release): v${ver}"
+          git push origin "$branch"
+
+      - name: Open Pull Request with PAT
+        if: ${{ secrets.PYTHON_BUMP_PR_TOKEN != '' }}
+        uses: peter-evans/create-pull-request@v8
+        with:
+          token: ${{ secrets.PYTHON_BUMP_PR_TOKEN }}
+          branch: release/v${{ inputs.version }}
+          base: main
+          title: "chore(release): v${{ inputs.version }}"
+          body: |
+            This PR prepares release **v${{ inputs.version }}**:
+            - bumps version in `pyproject.toml`
+            - verifies local install
+            - runs tests
+
+            After merge, the release workflow will:
+            - create tag `v${{ inputs.version }}`
+            - build `sanityctl-linux-amd64`
+            - build `sanityctl-linux-arm64`
+            - publish semver release assets
+            - update rolling prerelease `latest`
+          labels: |
+            release
+          draft: false
+
+      - name: Open Pull Request with default GITHUB_TOKEN
+        if: ${{ secrets.PYTHON_BUMP_PR_TOKEN == '' }}
+        uses: peter-evans/create-pull-request@v8
+        with:
+          branch: release/v${{ inputs.version }}
+          base: main
+          title: "chore(release): v${{ inputs.version }}"
+          body: |
+            This PR prepares release **v${{ inputs.version }}**:
+            - bumps version in `pyproject.toml`
+            - verifies local install
+            - runs tests
+          labels: |
+            release
+          draft: false

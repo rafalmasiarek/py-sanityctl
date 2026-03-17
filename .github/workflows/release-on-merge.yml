@@ -1,0 +1,192 @@
+name: Release on Merge
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  detect-version:
+    if: >
+      github.event.pull_request.merged == true &&
+      startsWith(github.event.pull_request.title, 'chore(release): v')
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      tag: ${{ steps.ver.outputs.tag }}
+    steps:
+      - name: Checkout merged main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Read version from pyproject.toml
+        id: ver
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+import tomllib
+from pathlib import Path
+
+data = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+version = data["project"]["version"]
+print(f"version={version}")
+print(f"tag=v{version}")
+PY
+
+  test:
+    needs: detect-version
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout merged main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: ".python-version"
+
+      - name: Install project
+        run: |
+          make install
+
+      - name: Run tests
+        run: |
+          make test
+
+  build:
+    needs: [detect-version, test]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+            artifact_name: sanityctl-linux-amd64
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            artifact_name: sanityctl-linux-arm64
+
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - name: Checkout merged main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: ".python-version"
+
+      - name: Build binary
+        run: |
+          make build
+          cp dist/sanityctl "${{ matrix.artifact_name }}"
+          chmod +x "${{ matrix.artifact_name }}"
+
+      - name: Smoke test binary
+        run: |
+          ./"${{ matrix.artifact_name }}" --help >/dev/null
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_name }}
+          if-no-files-found: error
+
+  release:
+    needs: [detect-version, build]
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout merged main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Download amd64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: sanityctl-linux-amd64
+          path: release-assets
+
+      - name: Download arm64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: sanityctl-linux-arm64
+          path: release-assets
+
+      - name: Generate checksums
+        run: |
+          cd release-assets
+          sha256sum sanityctl-linux-amd64 sanityctl-linux-arm64 > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Create tag vX.Y.Z if missing
+        run: |
+          tag="${{ needs.detect-version.outputs.tag }}"
+          if git rev-parse "$tag" >/dev/null 2>&1; then
+            echo "Tag $tag already exists"
+          else
+            git tag "$tag"
+            git push origin "$tag"
+          fi
+
+      - name: Create or update semver release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${{ needs.detect-version.outputs.tag }}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" \
+              release-assets/sanityctl-linux-amd64 \
+              release-assets/sanityctl-linux-arm64 \
+              release-assets/SHA256SUMS.txt \
+              --clobber
+          else
+            gh release create "$tag" \
+              release-assets/sanityctl-linux-amd64 \
+              release-assets/sanityctl-linux-arm64 \
+              release-assets/SHA256SUMS.txt \
+              --title "$tag" \
+              --generate-notes
+          fi
+
+      - name: Move latest tag to current main
+        run: |
+          git tag -f latest
+          git push origin refs/tags/latest --force
+
+      - name: Create or update rolling prerelease latest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view latest >/dev/null 2>&1; then
+            gh release edit latest \
+              --title "latest" \
+              --notes "Rolling prerelease built from main. For stable consumption use semver tags."
+          else
+            gh release create latest \
+              --prerelease \
+              --title "latest" \
+              --notes "Rolling prerelease built from main. For stable consumption use semver tags."
+          fi
+
+      - name: Upload latest assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload latest \
+            release-assets/sanityctl-linux-amd64 \
+            release-assets/sanityctl-linux-arm64 \
+            release-assets/SHA256SUMS.txt \
+            --clobber

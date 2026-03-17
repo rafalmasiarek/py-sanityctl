@@ -1,0 +1,31 @@
+report:
+  status_labels:
+    passed: PASS
+    failed: FAIL
+
+checks:
+  - name: python version
+    cmd: /usr/bin/python3 --version
+    expect:
+      code: 0
+      stdout:
+        - op: contains
+          value: "Python"
+
+  - name: json hello
+    cmd: /usr/bin/python3 -c 'import json; print(json.dumps({"status":"ok","version":"1.2.3"}))'
+    parser: json
+    expect:
+      code: 0
+      json:
+        - path: status
+          op: equals
+          value: ok
+        - path: version
+          op: startswith
+          value: "1.2"
+
+  - name: failing example
+    cmd: /usr/bin/python3 -c 'import sys; sys.exit(7)'
+    expect:
+      code: 0
