@@ -86,7 +86,7 @@ jobs:
           ./dist/sanityctl run --help >/dev/null
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build local candidate image
         uses: docker/build-push-action@v7
