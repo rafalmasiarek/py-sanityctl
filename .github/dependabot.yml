@@ -8,7 +8,7 @@ updates:
     open-pull-requests-limit: 10
     labels:
       - "dependencies"
-      - "python"
+      - "pip"
     commit-message:
       prefix: "chore(deps)"
     reviewers: []
@@ -23,6 +23,19 @@ updates:
       - "dependencies"
       - "github-actions"
     commit-message:
-      prefix: "chore(ci)"
+      prefix: "chore(deps)"
+    reviewers: []
+    assignees: []
+
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "docker"
+    commit-message:
+      prefix: "chore(deps)"
     reviewers: []
     assignees: []
