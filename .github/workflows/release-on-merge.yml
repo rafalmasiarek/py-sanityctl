@@ -51,6 +51,9 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version-file: ".python-version"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
 
       - name: Install project
         run: |
@@ -85,6 +88,9 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version-file: ".python-version"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
 
       - name: Build binary
         run: |
@@ -118,10 +124,20 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - name: Compute GHCR image name
+      - name: Compute image names
         id: image
         run: |
-          echo "name=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/sanityctl" >> "$GITHUB_OUTPUT"
+          echo "ghcr=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/sanityctl" >> "$GITHUB_OUTPUT"
+          echo "dockerhub=docker.io/${DOCKERHUB_USERNAME}/sanityctl" >> "$GITHUB_OUTPUT"
+
+      - name: Decide whether to publish to Docker Hub
+        id: publish
+        run: |
+          if [ -n "${DOCKERHUB_USERNAME}" ] && [ -n "${DOCKERHUB_TOKEN}" ]; then
+            echo "dockerhub=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "dockerhub=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Download amd64 artifact
         uses: actions/download-artifact@v4
@@ -214,50 +230,18 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Docker metadata for GHCR
-        id: meta_ghcr
-        uses: docker/metadata-action@v6
-        with:
-          images: ${{ steps.image.outputs.name }}
-          tags: |
-            type=raw,value=${{ needs.detect-version.outputs.tag }}
-            type=raw,value=latest
-          labels: |
-            org.opencontainers.image.title=sanityctl
-            org.opencontainers.image.description=Simple CLI for smoke tests and sanity checks in CI/CD pipelines
-            org.opencontainers.image.vendor=${{ github.repository_owner }}
-            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.version=${{ needs.detect-version.outputs.version }}
-
-      - name: Build and push image to GHCR
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: ./Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          build-args: |
-            SANITYCTL_VERSION=${{ needs.detect-version.outputs.version }}
-          tags: ${{ steps.meta_ghcr.outputs.tags }}
-          labels: ${{ steps.meta_ghcr.outputs.labels }}
-          annotations: ${{ steps.meta_ghcr.outputs.annotations }}
-          provenance: false
-          sbom: false
-
       - name: Log in to Docker Hub
-        if: ${{ env.DOCKERHUB_USERNAME != '' && env.DOCKERHUB_TOKEN != '' }}
+        if: ${{ steps.publish.outputs.dockerhub == 'true' }}
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Docker metadata for Docker Hub
-        if: ${{ env.DOCKERHUB_USERNAME != '' && env.DOCKERHUB_TOKEN != '' }}
-        id: meta_dockerhub
+      - name: Docker metadata for GHCR
+        id: meta_ghcr
         uses: docker/metadata-action@v6
         with:
-          images: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/sanityctl
+          images: ${{ steps.image.outputs.ghcr }}
           tags: |
             type=raw,value=${{ needs.detect-version.outputs.tag }}
             type=raw,value=latest
@@ -269,28 +253,57 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.version=${{ needs.detect-version.outputs.version }}
 
-      - name: Build and push image to Docker Hub
-        if: ${{ env.DOCKERHUB_USERNAME != '' && env.DOCKERHUB_TOKEN != '' }}
+      - name: Docker metadata for Docker Hub
+        if: ${{ steps.publish.outputs.dockerhub == 'true' }}
+        id: meta_dockerhub
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ steps.image.outputs.dockerhub }}
+          tags: |
+            type=raw,value=${{ needs.detect-version.outputs.tag }}
+            type=raw,value=latest
+          labels: |
+            org.opencontainers.image.title=sanityctl
+            org.opencontainers.image.description=Simple CLI for smoke tests and sanity checks in CI/CD pipelines
+            org.opencontainers.image.vendor=${{ github.repository_owner }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ needs.detect-version.outputs.version }}
+
+      - name: Prepare combined tags
+        id: tags
+        shell: bash
+        run: |
+          {
+            echo "tags<<EOF"
+            echo "${{ steps.meta_ghcr.outputs.tags }}"
+            if [ "${{ steps.publish.outputs.dockerhub }}" = "true" ]; then
+              echo "${{ steps.meta_dockerhub.outputs.tags }}"
+            fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build and push image
         uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          build-args: |
-            SANITYCTL_VERSION=${{ needs.detect-version.outputs.version }}
-          tags: ${{ steps.meta_dockerhub.outputs.tags }}
-          labels: ${{ steps.meta_dockerhub.outputs.labels }}
-          annotations: ${{ steps.meta_dockerhub.outputs.annotations }}
+          tags: ${{ steps.tags.outputs.tags }}
+          labels: ${{ steps.meta_ghcr.outputs.labels }}
+          annotations: ${{ steps.meta_ghcr.outputs.annotations }}
           provenance: false
           sbom: false
+          cache-from: type=gha,scope=sanityctl-docker
+          cache-to: type=gha,mode=max,scope=sanityctl-docker
 
       - name: Add container pull info to semver release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           tag="${{ needs.detect-version.outputs.tag }}"
-          ghcr_image="${{ steps.image.outputs.name }}"
+          ghcr_image="${{ steps.image.outputs.ghcr }}"
           current="$(gh release view "$tag" --json body -q .body)"
           marker="## Container image"
 
@@ -321,7 +334,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ghcr_image="${{ steps.image.outputs.name }}"
+          ghcr_image="${{ steps.image.outputs.ghcr }}"
           current="$(gh release view latest --json body -q .body)"
           marker="## Container image"
 
@@ -341,4 +354,3 @@ jobs:
               fi
             } > /tmp/latest-release-notes.txt
             gh release edit latest --notes-file /tmp/latest-release-notes.txt
-          fi
