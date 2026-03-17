@@ -20,4 +20,4 @@ RUN set -eux; \
     install -m 0755 "/tmp/$asset" /usr/local/bin/sanityctl; \
     rm -f "/tmp/$asset" /tmp/SHA256SUMS.txt
 
-CMD ["sanityctl"]
+ENTRYPOINT ["sanityctl"]
