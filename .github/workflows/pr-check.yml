@@ -75,28 +75,14 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Docker metadata
-        id: meta
-        uses: docker/metadata-action@v6
-        with:
-          images: local/${{ env.IMAGE_NAME }}
-          tags: |
-            type=raw,value=candidate
-          labels: |
-            org.opencontainers.image.title=sanityctl
-            org.opencontainers.image.description=Simple CLI for smoke tests and sanity checks in CI/CD pipelines
-            org.opencontainers.image.vendor=${{ github.repository_owner }}
-            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.revision=${{ steps.gitmeta.outputs.sha }}
-            org.opencontainers.image.version=${{ steps.ver.outputs.version }}
-
       - name: Build local candidate image
         run: |
           cat > Dockerfile.pr-check <<'EOF'
           FROM debian:bookworm-slim
           COPY dist/sanityctl /usr/local/bin/sanityctl
           RUN chmod +x /usr/local/bin/sanityctl
-          CMD ["sanityctl"]
+          ENTRYPOINT ["sanityctl"]
+          CMD ["--help"]
           EOF
           docker build -f Dockerfile.pr-check -t local/${IMAGE_NAME}:candidate .
 
