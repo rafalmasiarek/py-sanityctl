@@ -28,14 +28,14 @@ jobs:
         id: ver
         run: |
           python - <<'PY' >> "$GITHUB_OUTPUT"
-import tomllib
-from pathlib import Path
-
-data = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
-version = data["project"]["version"]
-print(f"version={version}")
-print(f"tag=v{version}")
-PY
+          import tomllib
+          from pathlib import Path
+          
+          data = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+          version = data["project"]["version"]
+          print(f"version={version}")
+          print(f"tag=v{version}")
+          PY
 
   test:
     needs: detect-version
