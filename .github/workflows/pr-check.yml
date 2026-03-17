@@ -38,7 +38,7 @@ jobs:
           echo "checkout_ref=refs/pull/${{ inputs.pr_number }}/head" >> "$GITHUB_OUTPUT"
 
       - name: Checkout PR source branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ steps.prctx_auto.outputs.checkout_ref || steps.prctx_manual.outputs.checkout_ref }}
 
