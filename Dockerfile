@@ -1,23 +1,38 @@
-FROM debian:bookworm-slim
+FROM python:3.11-alpine3.20 AS builder
 
-ARG SANITYCTL_VERSION=1.0.0
+WORKDIR /app
 
-RUN set -eux; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends ca-certificates curl; \
-    rm -rf /var/lib/apt/lists/*; \
-    arch="$(uname -m)"; \
-    case "$arch" in \
-      x86_64|amd64) asset="sanityctl-linux-amd64" ;; \
-      aarch64|arm64) asset="sanityctl-linux-arm64" ;; \
-      *) echo "Unsupported architecture: $arch" >&2; exit 1 ;; \
-    esac; \
-    base="https://github.com/rafalmasiarek/py-sanityctl/releases/download/v${SANITYCTL_VERSION}"; \
-    curl -fsSL -o /tmp/"$asset" "$base/$asset"; \
-    curl -fsSL -o /tmp/SHA256SUMS.txt "$base/SHA256SUMS.txt"; \
-    cd /tmp; \
-    grep "  $asset\$" SHA256SUMS.txt | sha256sum -c -; \
-    install -m 0755 "/tmp/$asset" /usr/local/bin/sanityctl; \
-    rm -f "/tmp/$asset" /tmp/SHA256SUMS.txt
+RUN apk add --no-cache \
+    build-base \
+    linux-headers \
+    binutils \
+    patchelf \
+    upx
 
-CMD ["sanityctl"]
+COPY pyproject.toml .
+COPY README.md .
+COPY src ./src
+
+RUN python -m venv /opt/venv && \
+    . /opt/venv/bin/activate && \
+    pip install --upgrade pip setuptools wheel && \
+    pip install . pyinstaller && \
+    printf 'from sanityctl.cli import main\n\nif __name__ == "__main__":\n    raise SystemExit(main())\n' > main.py && \
+    pyinstaller \
+      --onefile \
+      --name sanityctl \
+      --paths src \
+      --collect-all yaml \
+      --collect-all rich_argparse \
+      main.py
+
+FROM alpine:3.20
+
+RUN apk add --no-cache \
+    libstdc++ \
+    ca-certificates
+
+COPY --from=builder /app/dist/sanityctl /usr/local/bin/sanityctl
+
+ENTRYPOINT ["sanityctl"]
+CMD ["--help"]

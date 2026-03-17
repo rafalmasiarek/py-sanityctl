@@ -4,7 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       python_version:
-        description: "Python version to set in .python-version, e.g. 3.12"
+        description: "Python version to set in .python-version and Dockerfile"
+        required: true
+        type: string
+      alpine_version:
+        description: "Alpine version to set in Dockerfile"
         required: true
         type: string
 
@@ -25,50 +29,109 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - name: Validate version format
+      - name: Validate Python version format
         run: |
           ver="${{ inputs.python_version }}"
           python3 - <<'PY' "$ver"
           import re
           import sys
-          
+
           ver = sys.argv[1]
           if not re.fullmatch(r"\d+\.\d+(\.\d+)?", ver):
               raise SystemExit(f"Invalid Python version: {ver}")
           print(f"Python version OK: {ver}")
           PY
 
+      - name: Validate Alpine version format
+        run: |
+          ver="${{ inputs.alpine_version }}"
+          python3 - <<'PY' "$ver"
+          import re
+          import sys
+
+          ver = sys.argv[1]
+          if not re.fullmatch(r"\d+\.\d+(\.\d+)?", ver):
+              raise SystemExit(f"Invalid Alpine version: {ver}")
+          print(f"Alpine version OK: {ver}")
+          PY
+
       - name: Update .python-version
         run: |
           printf '%s\n' "${{ inputs.python_version }}" > .python-version
+
+      - name: Update Dockerfile Python and Alpine versions
+        run: |
+          py_ver="${{ inputs.python_version }}"
+          alpine_ver="${{ inputs.alpine_version }}"
+          python3 - <<'PY' "$py_ver" "$alpine_ver"
+          from pathlib import Path
+          import re
+          import sys
+
+          py_ver = sys.argv[1]
+          alpine_ver = sys.argv[2]
+
+          path = Path("Dockerfile")
+          text = path.read_text(encoding="utf-8")
+
+          text, count_builder = re.subn(
+              r'(?m)^FROM python:[^\s]+-alpine[^\s]* AS builder$',
+              f'FROM python:{py_ver}-alpine{alpine_ver} AS builder',
+              text,
+              count=1,
+          )
+          if count_builder != 1:
+              raise SystemExit("Failed to update builder image in Dockerfile")
+
+          text, count_runtime = re.subn(
+              r'(?m)^FROM alpine:[^\s]+$',
+              f'FROM alpine:{alpine_ver}',
+              text,
+              count=1,
+          )
+          if count_runtime != 1:
+              raise SystemExit("Failed to update runtime image in Dockerfile")
+
+          path.write_text(text, encoding="utf-8")
+          print(f"Updated Dockerfile builder to python:{py_ver}-alpine{alpine_ver}")
+          print(f"Updated Dockerfile runtime to alpine:{alpine_ver}")
+          PY
 
       - name: Create Pull Request with PAT
         if: ${{ env.WORKFLOW_PR_TOKEN != '' }}
         uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ secrets.WORKFLOW_PR_TOKEN }}
-          commit-message: "chore(python): bump to ${{ inputs.python_version }}"
-          branch: "chore/python-${{ inputs.python_version }}"
+          commit-message: "chore(python): bump to Python ${{ inputs.python_version }} / Alpine ${{ inputs.alpine_version }}"
+          branch: "chore/python-${{ inputs.python_version }}-alpine-${{ inputs.alpine_version }}"
           base: main
-          title: "chore(python): bump to ${{ inputs.python_version }}"
+          title: "chore(python): bump to Python ${{ inputs.python_version }} / Alpine ${{ inputs.alpine_version }}"
           body: |
-            This PR updates `.python-version` to `${{ inputs.python_version }}`.
+            This PR updates:
+            - `.python-version` to `${{ inputs.python_version }}`
+            - `Dockerfile` builder image to `python:${{ inputs.python_version }}-alpine${{ inputs.alpine_version }}`
+            - `Dockerfile` runtime image to `alpine:${{ inputs.alpine_version }}`
           labels: |
             dependencies
             python
+            docker
           draft: false
 
       - name: Create Pull Request with default GITHUB_TOKEN
         if: ${{ env.WORKFLOW_PR_TOKEN == '' }}
         uses: peter-evans/create-pull-request@v8
         with:
-          commit-message: "chore(python): bump to ${{ inputs.python_version }}"
-          branch: "chore/python-${{ inputs.python_version }}"
+          commit-message: "chore(python): bump to Python ${{ inputs.python_version }} / Alpine ${{ inputs.alpine_version }}"
+          branch: "chore/python-${{ inputs.python_version }}-alpine-${{ inputs.alpine_version }}"
           base: main
-          title: "chore(python): bump to ${{ inputs.python_version }}"
+          title: "chore(python): bump to Python ${{ inputs.python_version }} / Alpine ${{ inputs.alpine_version }}"
           body: |
-            This PR updates `.python-version` to `${{ inputs.python_version }}`.
+            This PR updates:
+            - `.python-version` to `${{ inputs.python_version }}`
+            - `Dockerfile` builder image to `python:${{ inputs.python_version }}-alpine${{ inputs.alpine_version }}`
+            - `Dockerfile` runtime image to `alpine:${{ inputs.alpine_version }}`
           labels: |
             dependencies
             python
+            docker
           draft: false
