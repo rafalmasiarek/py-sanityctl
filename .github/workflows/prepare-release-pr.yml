@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Semver without leading v, e.g. 0.1.0"
+        description: "Semver without leading v, (e.g. X.Y.Z, not vX.Y.Z)"
         required: true
         type: string
 

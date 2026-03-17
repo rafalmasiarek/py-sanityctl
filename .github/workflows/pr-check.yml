@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       pr_number:
-        description: "Pull request number to test manually, e.g. 123"
+        description: "Pull request number to test manually"
         required: false
         type: string
 
@@ -76,15 +76,16 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build local candidate image
-        run: |
-          cat > Dockerfile.pr-check <<'EOF'
-          FROM debian:bookworm-slim
-          COPY dist/sanityctl /usr/local/bin/sanityctl
-          RUN chmod +x /usr/local/bin/sanityctl
-          ENTRYPOINT ["sanityctl"]
-          CMD ["--help"]
-          EOF
-          docker build -f Dockerfile.pr-check -t local/${IMAGE_NAME}:candidate .
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile
+          load: true
+          push: false
+          platforms: linux/amd64
+          tags: local/${{ env.IMAGE_NAME }}:candidate
+          provenance: false
+          sbom: false
 
       - name: Smoke test Docker image
         run: |
