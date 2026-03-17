@@ -32,37 +32,37 @@ jobs:
         run: |
           ver="${{ inputs.version }}"
           python - <<'PY' "$ver"
-import re
-import sys
-
-ver = sys.argv[1]
-if not re.fullmatch(r"\d+\.\d+\.\d+", ver):
-    raise SystemExit(f"Invalid semver: {ver}")
-print(f"Version OK: {ver}")
-PY
+          import re
+          import sys
+          
+          ver = sys.argv[1]
+          if not re.fullmatch(r"\d+\.\d+\.\d+", ver):
+              raise SystemExit(f"Invalid semver: {ver}")
+          print(f"Version OK: {ver}")
+          PY
 
       - name: Bump version in pyproject.toml
         run: |
           ver="${{ inputs.version }}"
           python - <<'PY' "$ver"
-from pathlib import Path
-import re
-import sys
-
-ver = sys.argv[1]
-path = Path("pyproject.toml")
-text = path.read_text(encoding="utf-8")
-new_text, count = re.subn(
-    r'(?m)^version = "[^"]+"$',
-    f'version = "{ver}"',
-    text,
-    count=1,
-)
-if count != 1:
-    raise SystemExit("Failed to update version in pyproject.toml")
-path.write_text(new_text, encoding="utf-8")
-print(f"Updated pyproject.toml to version {ver}")
-PY
+          from pathlib import Path
+          import re
+          import sys
+          
+          ver = sys.argv[1]
+          path = Path("pyproject.toml")
+          text = path.read_text(encoding="utf-8")
+          new_text, count = re.subn(
+              r'(?m)^version = "[^"]+"$',
+              f'version = "{ver}"',
+              text,
+              count=1,
+          )
+          if count != 1:
+              raise SystemExit("Failed to update version in pyproject.toml")
+          path.write_text(new_text, encoding="utf-8")
+          print(f"Updated pyproject.toml to version {ver}")
+          PY
 
       - name: Install project
         run: |
