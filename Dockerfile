@@ -1,6 +1,6 @@
 FROM debian:bookworm-slim
 
-ARG SANITYCTL_VERSION=1.0.0
+ARG SANITYCTL_VERSION=1.1.0
 
 RUN set -eux; \
     apt-get update; \
