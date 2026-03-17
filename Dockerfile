@@ -21,3 +21,4 @@ RUN set -eux; \
     rm -f "/tmp/$asset" /tmp/SHA256SUMS.txt
 
 ENTRYPOINT ["sanityctl"]
+CMD ["--help"]
