@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sanityctl"
-version = "0.1.0"
+version = "1.0.0"
 description = "Simple CLI for smoke tests and sanity checks in CI/CD pipelines."
 requires-python = ">=3.10"
 dependencies = [
