@@ -66,6 +66,29 @@ jobs:
           print(f"Updated pyproject.toml to version {ver}")
           PY
 
+      - name: Bump SANITYCTL_VERSION in Dockerfile
+        run: |
+          ver="${{ inputs.version }}"
+          python - <<'PY' "$ver"
+          from pathlib import Path
+          import re
+          import sys
+
+          ver = sys.argv[1]
+          path = Path("Dockerfile")
+          text = path.read_text(encoding="utf-8")
+          new_text, count = re.subn(
+              r'(?m)^ARG SANITYCTL_VERSION=.*$',
+              f'ARG SANITYCTL_VERSION={ver}',
+              text,
+              count=1,
+          )
+          if count != 1:
+              raise SystemExit("Failed to update SANITYCTL_VERSION in Dockerfile")
+          path.write_text(new_text, encoding="utf-8")
+          print(f"Updated Dockerfile SANITYCTL_VERSION to {ver}")
+          PY
+
       - name: Install project
         run: |
           make install
@@ -79,12 +102,14 @@ jobs:
         uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ secrets.WORKFLOW_PR_TOKEN }}
+          commit-message: "chore(release): v${{ inputs.version }}"
           branch: release/v${{ inputs.version }}
           base: main
           title: "chore(release): v${{ inputs.version }}"
           body: |
             This PR prepares release **v${{ inputs.version }}**:
             - bumps version in `pyproject.toml`
+            - bumps `SANITYCTL_VERSION` in `Dockerfile`
             - verifies local install
             - runs tests
 
@@ -94,6 +119,7 @@ jobs:
             - build `sanityctl-linux-arm64`
             - publish semver release assets
             - update rolling prerelease `latest`
+            - publish container image tags `v${{ inputs.version }}` and `latest`
           labels: |
             release
           draft: false
@@ -102,12 +128,14 @@ jobs:
         if: ${{ env.WORKFLOW_PR_TOKEN == '' }}
         uses: peter-evans/create-pull-request@v8
         with:
+          commit-message: "chore(release): v${{ inputs.version }}"
           branch: release/v${{ inputs.version }}
           base: main
           title: "chore(release): v${{ inputs.version }}"
           body: |
             This PR prepares release **v${{ inputs.version }}**:
             - bumps version in `pyproject.toml`
+            - bumps `SANITYCTL_VERSION` in `Dockerfile`
             - verifies local install
             - runs tests
           labels: |

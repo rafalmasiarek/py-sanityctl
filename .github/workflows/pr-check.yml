@@ -18,6 +18,8 @@ permissions:
 jobs:
   test-and-build:
     runs-on: ubuntu-24.04
+    env:
+      IMAGE_NAME: sanityctl
 
     steps:
       - name: Checkout PR branch for manual run
@@ -34,6 +36,18 @@ jobs:
         id: gitmeta
         run: |
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Read version from pyproject.toml
+        id: ver
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import tomllib
+          from pathlib import Path
+
+          data = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+          version = data["project"]["version"]
+          print(f"version={version}")
+          PY
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -57,6 +71,39 @@ jobs:
           test -x dist/sanityctl
           ./dist/sanityctl --help >/dev/null
           ./dist/sanityctl run --help >/dev/null
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: local/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=candidate
+          labels: |
+            org.opencontainers.image.title=sanityctl
+            org.opencontainers.image.description=Simple CLI for smoke tests and sanity checks in CI/CD pipelines
+            org.opencontainers.image.vendor=${{ github.repository_owner }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ steps.gitmeta.outputs.sha }}
+            org.opencontainers.image.version=${{ steps.ver.outputs.version }}
+
+      - name: Build local candidate image
+        run: |
+          cat > Dockerfile.pr-check <<'EOF'
+          FROM debian:bookworm-slim
+          COPY dist/sanityctl /usr/local/bin/sanityctl
+          RUN chmod +x /usr/local/bin/sanityctl
+          CMD ["sanityctl"]
+          EOF
+          docker build -f Dockerfile.pr-check -t local/${IMAGE_NAME}:candidate .
+
+      - name: Smoke test Docker image
+        run: |
+          docker run --rm local/${IMAGE_NAME}:candidate --help >/dev/null
+          docker run --rm local/${IMAGE_NAME}:candidate run --help >/dev/null
 
       - name: Comment success on PR
         if: ${{ success() && github.event_name == 'workflow_dispatch' && inputs.pr_number != '' }}
@@ -82,6 +129,8 @@ jobs:
                 '- tests',
                 '- standalone binary build',
                 '- binary smoke test (`--help`)',
+                '- Docker image build',
+                '- Docker image smoke test (`--help`)',
               ].join('\n')
             });
 

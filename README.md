@@ -31,8 +31,6 @@ It supports:
 12. Makefile targets
 13. Development workflow
 14. Building a standalone binary
-15. Troubleshooting
-16. Future extension ideas
 
 ---
 
@@ -77,6 +75,52 @@ Examples:
 `sanityctl` is intended to stay small and understandable.
 
 ---
+
+## Example installation
+
+### Pinned version    
+
+```bash  
+set -euo pipefail  
+arch="$(uname -m)"  
+case "$arch" in  
+    x86_64|amd64) asset="sanityctl-linux-amd64" ;;  
+    aarch64|arm64) asset="sanityctl-linux-arm64" ;;  
+    *) echo "Unsupported architecture: $arch" >&2; exit 1 ;;  
+esac  
+version="X.Y.Z"  
+base="https://github.com/rafalmasiarek/py-sanityctl/releases/download/v${version}"  
+curl -fsSL -o /tmp/"$asset" "$base/$asset"  
+curl -fsSL -o /tmp/SHA256SUMS.txt "$base/SHA256SUMS.txt"  
+( cd /tmp && grep " $asset\$" SHA256SUMS.txt | sha256sum -c - )  
+sudo install -m 0755 /tmp/"$asset" /usr/local/bin/sanityctl  
+sanityctl --help
+```  
+  
+### Latest rolling release  
+  
+Use this when you want the newest available binary.  
+  
+```bash  
+set -euo pipefail  
+arch="$(uname -m)"  
+case "$arch" in  
+    x86_64|amd64) asset="sanityctl-linux-amd64" ;;  
+    aarch64|arm64) asset="sanityctl-linux-arm64" ;;  
+    *) echo "Unsupported architecture: $arch" >&2; exit 1 ;;  
+esac  
+base="https://github.com/rafalmasiarek/py-sanityctl/releases/download/latest"  
+curl -fsSL -o /tmp/"$asset" "$base/$asset"  
+curl -fsSL -o /tmp/SHA256SUMS.txt "$base/SHA256SUMS.txt"  
+( cd /tmp && grep " $asset\$" SHA256SUMS.txt | sha256sum -c - )  
+sudo install -m 0755 /tmp/"$asset" /usr/local/bin/sanityctl  
+sanityctl --help
+```    
+  
+### Recommendation  
+  
+- Use `vX.Y.Z` for stable CI/CD pipelines  
+- Use `latest` for convenience and fast-moving internal tooling
 
 ## Repository layout
 
