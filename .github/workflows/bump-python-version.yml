@@ -16,7 +16,7 @@ jobs:
   bump-python:
     runs-on: ubuntu-24.04
     env:
-      PYTHON_BUMP_PR_TOKEN: ${{ secrets.PYTHON_BUMP_PR_TOKEN }}
+      WORKFLOW_PR_TOKEN: ${{ secrets.WORKFLOW_PR_TOKEN }}
 
     steps:
       - name: Checkout main
@@ -43,10 +43,10 @@ jobs:
           printf '%s\n' "${{ inputs.python_version }}" > .python-version
 
       - name: Create Pull Request with PAT
-        if: ${{ env.PYTHON_BUMP_PR_TOKEN != '' }}
+        if: ${{ env.WORKFLOW_PR_TOKEN != '' }}
         uses: peter-evans/create-pull-request@v8
         with:
-          token: ${{ secrets.PYTHON_BUMP_PR_TOKEN }}
+          token: ${{ secrets.WORKFLOW_PR_TOKEN }}
           commit-message: "chore(python): bump to ${{ inputs.python_version }}"
           branch: "chore/python-${{ inputs.python_version }}"
           base: main
@@ -59,7 +59,7 @@ jobs:
           draft: false
 
       - name: Create Pull Request with default GITHUB_TOKEN
-        if: ${{ env.PYTHON_BUMP_PR_TOKEN == '' }}
+        if: ${{ env.WORKFLOW_PR_TOKEN == '' }}
         uses: peter-evans/create-pull-request@v8
         with:
           commit-message: "chore(python): bump to ${{ inputs.python_version }}"
