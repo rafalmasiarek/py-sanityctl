@@ -16,6 +16,7 @@ from .reporters import (
     render_summary_text,
 )
 from .runner import run_checks
+from .utils import expand_env_string
 
 
 class SanityctlHelpFormatter(RawDescriptionRichHelpFormatter):
@@ -57,6 +58,8 @@ def build_parser() -> argparse.ArgumentParser:
               • Use --file to load checks from YAML.
               • Use --cmd to define one inline check directly on the command line.
               • You can combine both: checks from file + one inline check in the same run.
+              • YAML supports include/includes for composing configs.
+              • String values support environment expansion like $VAR and ${VAR}.
               • JSON assertions require --parser json and usually --json-path.
               • Exit code 0 means all checks passed.
               • Exit code 1 means at least one check failed.
@@ -139,6 +142,9 @@ def build_parser() -> argparse.ArgumentParser:
 
             YAML CONFIG EXAMPLE
 
+              include:
+                - shared/common.yaml
+
               report:
                 status_labels:
                   passed: PASS
@@ -164,7 +170,7 @@ def build_parser() -> argparse.ArgumentParser:
                         value: ok
                       - path: version
                         op: startswith
-                        value: "1.2"
+                        value: "${EXPECTED_VERSION_PREFIX}"
 
             JSON PATH EXAMPLES
 
@@ -292,28 +298,63 @@ def inline_check_from_args(args: argparse.Namespace) -> CheckSpec | None:
     if not args.cmd:
         return None
 
+    expanded_cmd = expand_env_string(args.cmd)
+    expanded_name = expand_env_string(args.name) if args.name else expanded_cmd
+
     stdout_assertions: list[TextAssertion] = []
     if args.stdout_contains is not None:
-        stdout_assertions.append(TextAssertion(op="contains", value=args.stdout_contains))
+        stdout_assertions.append(
+            TextAssertion(op="contains", value=expand_env_string(args.stdout_contains))
+        )
     if args.stdout_equals is not None:
-        stdout_assertions.append(TextAssertion(op="equals", value=args.stdout_equals))
+        stdout_assertions.append(
+            TextAssertion(op="equals", value=expand_env_string(args.stdout_equals))
+        )
     if args.stdout_regex is not None:
-        stdout_assertions.append(TextAssertion(op="regex", value=args.stdout_regex))
+        stdout_assertions.append(
+            TextAssertion(op="regex", value=expand_env_string(args.stdout_regex))
+        )
 
     json_assertions: list[JsonAssertion] = []
     if args.json_path:
+        json_path = expand_env_string(args.json_path)
+
         if args.json_equals is not None:
-            json_assertions.append(JsonAssertion(path=args.json_path, op="equals", value=args.json_equals))
+            json_assertions.append(
+                JsonAssertion(
+                    path=json_path,
+                    op="equals",
+                    value=expand_env_string(args.json_equals),
+                )
+            )
         if args.json_contains is not None:
-            json_assertions.append(JsonAssertion(path=args.json_path, op="contains", value=args.json_contains))
+            json_assertions.append(
+                JsonAssertion(
+                    path=json_path,
+                    op="contains",
+                    value=expand_env_string(args.json_contains),
+                )
+            )
         if args.json_regex is not None:
-            json_assertions.append(JsonAssertion(path=args.json_path, op="regex", value=args.json_regex))
+            json_assertions.append(
+                JsonAssertion(
+                    path=json_path,
+                    op="regex",
+                    value=expand_env_string(args.json_regex),
+                )
+            )
         if args.json_startswith is not None:
-            json_assertions.append(JsonAssertion(path=args.json_path, op="startswith", value=args.json_startswith))
+            json_assertions.append(
+                JsonAssertion(
+                    path=json_path,
+                    op="startswith",
+                    value=expand_env_string(args.json_startswith),
+                )
+            )
 
     return CheckSpec(
-        name=args.name or args.cmd,
-        cmd=args.cmd,
+        name=expanded_name,
+        cmd=expanded_cmd,
         parser=args.parser,
         expect_code=args.expect_code,
         stdout_assertions=stdout_assertions,
