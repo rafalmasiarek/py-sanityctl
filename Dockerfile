@@ -26,7 +26,7 @@ RUN python -m venv /opt/venv && \
       --collect-all rich_argparse \
       main.py
 
-FROM alpine:3.20
+FROM alpine:3.24
 
 RUN apk add --no-cache \
     libstdc++ \
